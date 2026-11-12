@@ -186,8 +186,7 @@ class Window(Gtk.Window):
             try:
                 return mode, path, read_status(path), ""
             except PermissionError:
-                label = mode if cable else "Unknown"
-                return label, path, None, f"Access denied for {path}."
+                return f"{mode} detected", path, None, f"Permission required for {path}."
             except (OSError, ValueError) as error:
                 label = mode if cable else "Unknown"
                 return label, path, None, str(error)

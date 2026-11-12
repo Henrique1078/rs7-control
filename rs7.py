@@ -93,6 +93,12 @@ def read_status(path):
     return values, config[12], battery if battery is not None and battery <= 100 else None
 
 
+def config_state(report):
+    # Byte 54 is present in wired readback (100 at full charge) but the
+    # vendor command has no writable counterpart for it.
+    return report[8:54] + report[55:]
+
+
 def set_dpi(path, stage, value, previous):
     if not 1 <= stage <= 6 or not MIN_DPI <= value <= MAX_DPI:
         raise ValueError("Invalid DPI or stage.")
@@ -106,7 +112,7 @@ def set_dpi(path, stage, value, previous):
             return
         # Writes replace a shared block. Only use the layout verified on hardware.
         if (not 1 <= original[12] <= original[11] <= 6
-                or any(original[25:48]) or any(original[54:])
+                or any(original[25:48]) or original[54] > 100 or any(original[55:])
                 or not all(0 < dpi <= MAX_DPI for dpi in dpi_values(original))):
             raise ValueError("Unrecognized configuration layout. DPI writes are disabled.")
         restore = bytearray(65)
@@ -121,18 +127,18 @@ def set_dpi(path, stage, value, previous):
         try:
             send(fd, packet)
             time.sleep(0.25)
-            if query(fd, READ_CONFIG)[8:] != expected[8:]:
+            if config_state(query(fd, READ_CONFIG)) != config_state(expected):
                 raise ValueError("The device did not confirm the requested configuration.")
         except (OSError, ValueError) as error:
             try:
                 try:
-                    restored = query(fd, READ_CONFIG)[8:] == original[8:]
+                    restored = config_state(query(fd, READ_CONFIG)) == config_state(original)
                 except TimeoutError:
                     restored = False
                 if not restored:
                     send(fd, restore)
                     time.sleep(0.25)
-                    if query(fd, READ_CONFIG)[8:] != original[8:]:
+                    if config_state(query(fd, READ_CONFIG)) != config_state(original):
                         raise ValueError("Readback differs from the original.")
             except (OSError, ValueError) as restore_error:
                 raise OSError(
